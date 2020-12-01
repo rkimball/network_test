@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <time.h>
+#include <errno.h>
+#include <iostream>
 
 /**
   Connection handler - this will be executed in
@@ -18,6 +20,24 @@
 */
 #define BUF_SIZE (1024)
 
+/*!
+ * \brief Call a function and retry if an EINTR error is encountered.
+ * \param f The function to retry.
+ * \param error_value The error value returned by the call on retry failure.
+ * \return The return code returned by function f or error_value on retry failure.
+ */
+template <typename FUNC>
+ssize_t RetryCallOnEINTR(FUNC f, std::string call) {
+  size_t retry_count = 8;
+  ssize_t rc = -1;
+  std::cout << "waiting on call " << call << "\n";
+  while (--retry_count && (rc = f()) == -1 && errno == EINTR) {
+    std::cout << "EINTR\n";
+  }
+  std::cout << "call done\n";
+  return rc;
+}
+
 int echo_client(int sd) 
 {
     int result = 0; 
@@ -25,10 +45,10 @@ int echo_client(int sd)
     char buf[BUF_SIZE + 1] = {0};
 
     ssize_t n_read;
-    while (0 < (n_read = read(sd, buf, BUF_SIZE))) 
+    while ((n_read = RetryCallOnEINTR([&](){ return recv(sd, buf, BUF_SIZE, 0); }, "recv")) > 0) 
     {
         buf[n_read] = '\0';
-        printf("%s\n", buf);
+        printf("got %s\n", buf);
     }
 
     if (0 > n_read)
@@ -82,10 +102,15 @@ int main(void)
     // Accept new connections, fork the new process for handling
     // and handle the connection in the new process, while the parent
     // is waiting for another connection to arrive.
-    int accepted_socket = 0;
-    while (0 < (accepted_socket =
-                  accept(listening_socket, (struct sockaddr*) &addr, &sock_len)))
+    int accepted_socket = 1;
+    while(accepted_socket > 0)
     {
+        std::cout << "main thread accepting connection now\n";
+        int accepted_socket = RetryCallOnEINTR([&](){
+           return accept(listening_socket, (struct sockaddr*) &addr, &sock_len);
+        }, "accept");
+        std::cout << "main thread got a connection\n";
+
         pid_t pid_child = fork();
 
         if (0 > pid_child)
