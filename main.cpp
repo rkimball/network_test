@@ -8,6 +8,7 @@
 #include <time.h>
 #include <errno.h>
 #include <iostream>
+#include <signal.h>
 
 /**
   Connection handler - this will be executed in
@@ -19,6 +20,15 @@
     sd = socket to the client
 */
 #define BUF_SIZE (1024)
+
+void sig_handler(int sig)
+{
+    static int count = 3;
+    if (sig == SIGINT) {
+        std::cout << "received SIGINT\n";
+        if (--count <= 0) abort();
+    }
+}
 
 /*!
  * \brief Call a function and retry if an EINTR error is encountered.
@@ -69,6 +79,10 @@ int echo_client(int sd)
 
 int main(void)
 {
+    if (signal(SIGINT, sig_handler) == SIG_ERR) {
+        printf("\ncan't catch SIGINT\n");
+    }
+
     // Create a listening socket
     int listening_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listening_socket == -1)
