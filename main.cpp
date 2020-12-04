@@ -42,20 +42,20 @@ ssize_t RetryCallOnEINTR(FUNC f, std::string call) {
   ssize_t rc = -1;
   std::cout << "waiting on call " << call << "\n";
   while (--retry_count && (rc = f()) == -1 && errno == EINTR) {
-    std::cout << "EINTR\n";
+    std::cout << "EINTR " << call << "\n";
   }
   std::cout << "call done\n";
   return rc;
 }
 
-int echo_client(int sd) 
+int echo_client(int sd)
 {
-    int result = 0; 
+    int result = 0;
 
     char buf[BUF_SIZE + 1] = {0};
 
     ssize_t n_read;
-    while ((n_read = RetryCallOnEINTR([&](){ return recv(sd, buf, BUF_SIZE, 0); }, "recv")) > 0) 
+    while ((n_read = RetryCallOnEINTR([&](){ return recv(sd, buf, BUF_SIZE, 0); }, "recv")) > 0)
     {
         buf[n_read] = '\0';
         printf("got %s\n", buf);
@@ -83,6 +83,10 @@ int main(void)
         printf("\ncan't catch SIGINT\n");
     }
 
+    if (siginterrupt(SIGINT, 1) == -1) {
+      perror("siginterrupt");
+    }
+
     // Create a listening socket
     int listening_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listening_socket == -1)
@@ -92,7 +96,7 @@ int main(void)
     }
 
     // Bind it to port 15000.
-    unsigned short listening_port = 15000;
+    unsigned short listening_port = 15001;
 
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
@@ -135,7 +139,7 @@ int main(void)
         else if (0 == pid_child)
         {
             // inside the forked child here
-            close(listening_socket); // The child does not need this any more. 
+            close(listening_socket); // The child does not need this any more.
 
             echo_client(accepted_socket);
 
